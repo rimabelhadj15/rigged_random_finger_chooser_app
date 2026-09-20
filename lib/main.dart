@@ -156,7 +156,7 @@ class _ChooserScreenState extends State<ChooserScreen>
 
   Future<double> _readVolume() async {
     try {
-      return await VolumeController().getVolume();
+      return await VolumeController.instance.getVolume();
     } catch (_) {
       return 1.0; // if we can't read it, don't accidentally trigger the rig
     }
@@ -267,4 +267,4 @@ class _ChooserScreenState extends State<ChooserScreen>
       ),
     );
   }
-}
+} 
