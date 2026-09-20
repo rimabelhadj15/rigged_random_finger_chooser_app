@@ -68,11 +68,35 @@ class _ChooserScreenState extends State<ChooserScreen>
   bool _locked = false; // true once a winner has been picked, until fingers lift
 
   // How "off" the volume needs to be to count as the secret trigger.
-  static const double _volumeTriggerThreshold = 0.02;
+  static const double _volumeTriggerThreshold = 0.05;
+
+  // Live volume reading, kept up to date via a listener so we're not
+  // relying on a single getVolume() call at the moment of picking.
+  double _currentVolume = 1.0;
+  bool _currentlyMuted = false;
+
+  static const bool _showDebugOverlay = true; // set to false once it's working
+
+  @override
+  void initState() {
+    super.initState();
+    VolumeController.instance.showSystemUI = false;
+    VolumeController.instance.addListener((volume) {
+      if (!mounted) return;
+      setState(() => _currentVolume = volume);
+    }, fetchInitialVolume: true);
+    VolumeController.instance
+        .isMuted()
+        .then((muted) {
+      if (!mounted) return;
+      setState(() => _currentlyMuted = muted);
+    });
+  }
 
   @override
   void dispose() {
     _countdownTimer?.cancel();
+    VolumeController.instance.removeListener();
     super.dispose();
   }
 
@@ -154,20 +178,21 @@ class _ChooserScreenState extends State<ChooserScreen>
     });
   }
 
-  Future<double> _readVolume() async {
-    try {
-      return await VolumeController.instance.getVolume();
-    } catch (_) {
-      return 1.0; // if we can't read it, don't accidentally trigger the rig
-    }
-  }
-
   Future<void> _pickWinner() async {
     if (_touches.isEmpty) return;
 
-    final volume = await _readVolume();
+    // Re-check both signals right at pick time, in case the listener
+    // hasn't fired yet on this device.
+    double volume = _currentVolume;
+    bool muted = _currentlyMuted;
+    try {
+      volume = await VolumeController.instance.getVolume();
+    } catch (_) {}
+    try {
+      muted = await VolumeController.instance.isMuted();
+    } catch (_) {}
 
-    final bool rigged = volume <= _volumeTriggerThreshold;
+    final bool rigged = muted || volume <= _volumeTriggerThreshold;
 
     int winnerId;
     if (rigged) {
@@ -225,6 +250,20 @@ class _ChooserScreenState extends State<ChooserScreen>
 
             // One neon circle per active finger.
             ..._touches.values.map((t) => _buildCircle(t)),
+
+            // Temporary debug readout — remove once the rig is confirmed
+            // working on your device (set _showDebugOverlay to false).
+            if (_showDebugOverlay)
+              Positioned(
+                top: 40,
+                left: 16,
+                child: Text(
+                  'vol: ${_currentVolume.toStringAsFixed(3)}'
+                  '  muted: $_currentlyMuted'
+                  '  threshold: $_volumeTriggerThreshold',
+                  style: const TextStyle(color: Colors.white38, fontSize: 12),
+                ),
+              ),
           ],
         ),
       ),
@@ -267,4 +306,4 @@ class _ChooserScreenState extends State<ChooserScreen>
       ),
     );
   }
-} 
+}
